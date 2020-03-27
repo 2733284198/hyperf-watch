@@ -18,4 +18,6 @@ composer requried daodao97/hyperf-watch dev-master
 
 `./vendor/bin/watch` 默认扫描根目录下除`vendor`外的`php`文件
 
-`./vendor/bin/watch vender/***` 也可追加其他目录
+`./vendor/bin/watch vendor/***` 也可追加其他目录
+
+![示例](https://cdn.jsdelivr.net/gh/daodao97/FigureBed@master/uPic/cghggR.png)

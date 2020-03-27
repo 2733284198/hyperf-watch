@@ -1,0 +1,157 @@
+#!/usr/bin/env php
+<?php declare(strict_types = 1);
+/**
+ * Hyperf Watch Hot Reload Scripts
+ * Modify From https://github.com/leocavalcante/dwoole/blob/master/dev/watch.php
+ */
+global $watch_dir;
+
+$watch_dir = array_filter(array_merge(['./'], explode(',', $argv[1] ?? '')));
+
+// PHP Bin File PHP程序所在路径（默认自动获取）
+const PHP_BIN_FILE = 'which php';
+// Watch Ext 监听扩展名（多个可用英文逗号隔开）
+const WATCH_EXT = 'php,env';
+// Exclude Dir 排除目录（不监听的目录，数组形式)
+const EXCLUDE_DIR = ['vendor'];
+// Entry Point File 入口文件
+const ENTRY_POINT_FILE = './bin/hyperf.php';
+// Scan Interval 扫描间隔（毫秒，默认2000）
+const SCAN_INTERVAL = 2000;
+if (!function_exists('exec')) {
+    echo "[x] 请取消禁用exec函数" . PHP_EOL;
+    exit(1);
+}
+define('PHP', PHP_BIN_FILE == 'which php' ? exec('which php') : PHP_BIN_FILE);
+if (!file_exists(PHP)) {
+    echo "[x] PHP bin (" . PHP . ") 没有找到，请确认路径正确?" . PHP_EOL;
+    exit(1);
+}
+if (!file_exists(ENTRY_POINT_FILE)) {
+    echo "[x] 入口文件 (" . ENTRY_POINT_FILE . ") 没有找到，请确认文件存在?" . PHP_EOL;
+    exit(1);
+}
+
+use Swoole\Event;
+use Swoole\Process;
+use Swoole\Timer;
+
+swoole_async_set(['enable_coroutine' => false]);
+$hashes = [];
+$serve = null;
+echo color("🚀 Start @ " . date('Y-m-d H:i:s')) . PHP_EOL;
+start();
+watch();
+
+function start()
+{
+    global $serve;
+    $serve = new Process(function (Process $serve) {
+        $opt = getopt('init');
+        if (isset($opt['init'])) {
+            echo exec(PHP . ' ' . ENTRY_POINT_FILE . ' di:init-proxy') . '..' . PHP_EOL;
+        }
+        $serve->exec(PHP, [
+            ENTRY_POINT_FILE,
+            'start',
+        ]);
+    }, true);
+    $serve->start();
+    if (false === $serve->pid) {
+        echo swoole_strerror(swoole_errno()) . PHP_EOL;
+        exit(1);
+    }
+    Event::add($serve->pipe, function ($pipe) use (&$serve) {
+        $message = @$serve->read();
+        if (!empty($message)) {
+            echo $message;
+        }
+    });
+}
+
+/**
+ * monitoring files add/delete/change
+ */
+function watch()
+{
+    Timer::tick(SCAN_INTERVAL, function () {
+        global $hashes;
+        $current = getHashes();
+        if ($hashes && $hashes !== $current) {
+            $change_count = count(array_diff(array_values($hashes), array_values($current)));
+            $add_count = count(array_diff(array_keys($current), array_keys($hashes)));
+            $delete_count = count(array_diff(array_keys($hashes), array_keys($current)));
+            echo str_repeat(PHP_EOL, 2), "📡 Watching ";
+            echo sprintf('total:%d, change:%d, add:%d, delete:%d', count($current), $change_count, $add_count, $delete_count) . PHP_EOL;
+            restart();
+            $hashes = $current;
+        } else {
+            $hashes = $current;
+        }
+    });
+}
+
+function getHashes()
+{
+    global $watch_dir;
+    $files = [];
+    foreach ($watch_dir as $dir) {
+        $files += php_files($dir);
+    }
+    return array_combine($files, array_map('file_hash', $files));
+}
+
+function restart()
+{
+    global $serve;
+    echo color("🔄 Restart @ " . date('Y-m-d H:i:s')) . PHP_EOL;
+    Process::kill($serve->pid);
+    start();
+}
+
+function file_hash(string $pathname): string
+{
+    $contents = file_get_contents($pathname);
+    if (false === $contents) {
+        return 'deleted';
+    }
+
+    return md5($contents);
+}
+
+function php_files(string $dirname): array
+{
+    $directory = new RecursiveDirectoryIterator($dirname);
+    $filter = new Filter($directory);
+    $iterator = new RecursiveIteratorIterator($filter);
+
+    return array_map(function ($fileInfo) {
+        return $fileInfo->getPathname();
+    }, iterator_to_array($iterator));
+}
+
+function color($str)
+{
+    return "\e[0;32m{$str}\e[0m";
+}
+
+class Filter extends RecursiveFilterIterator
+{
+    public function accept()
+    {
+        if ($this->current()->isDir()) {
+            if (preg_match('/^\./', $this->current()->getFilename())) {
+                return false;
+            }
+
+            return !in_array($this->current()->getFilename(), EXCLUDE_DIR);
+        }
+        $list = array_map(function (string $item): string {
+            $item = trim($item);
+            return "\.{$item}";
+        }, explode(',', WATCH_EXT));
+        $list = implode('|', $list);
+
+        return preg_match("/($list)$/", $this->current()->getFilename());
+    }
+}

@@ -9,10 +9,5 @@
       "email": "daodoa97@foxmail.com"
     }
   ],
-  "bin": "bin/watch",
-  "extra": {
-    "branch-alias": {
-      "dev-master": "1.0-dev"
-    }
-  }
+  "bin": "bin/watch"
 }

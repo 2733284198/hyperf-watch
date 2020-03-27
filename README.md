@@ -1,7 +1,7 @@
 > 一个帮你在Hyperf开发时快速重启服务的小工具
 ### 安装
 ```shell
-composer requried daodao97/hyperf-watch dev-master
+composer require daodao97/hyperf-watch dev-master --dev
 ```
 ### 修改`composer.json`
 ```json

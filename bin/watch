@@ -39,6 +39,7 @@ use Swoole\Timer;
 swoole_async_set(['enable_coroutine' => false]);
 $hashes = [];
 $serve = null;
+$event_fd = 0;
 echo color("🚀 Start @ " . date('Y-m-d H:i:s')) . PHP_EOL;
 start();
 watch();
@@ -61,7 +62,9 @@ function start()
         echo swoole_strerror(swoole_errno()) . PHP_EOL;
         exit(1);
     }
-    Event::add($serve->pipe, function ($pipe) use (&$serve) {
+    global $event_fd;
+    $event_fd && Event::del($event_fd);
+    $event_fd = Event::add($serve->pipe, function ($pipe) use (&$serve) {
         $message = @$serve->read();
         if (!empty($message)) {
             echo $message;
